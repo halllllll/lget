@@ -45,7 +45,6 @@ func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 	// url確認用
 	pseudoUrl := *apiUrl
 	pseudoUrl.Path = "auth/check-logged-in"
-	fmt.Println(pseudoUrl.String())
 	// urlが存在しているかテスト
 	resp, err := http.Get(pseudoUrl.String())
 
@@ -70,10 +69,15 @@ func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 	// ログインしてみるテスト
 	logined, errors := lget.knock(loginInfo)
 	if errors != nil {
+		return nil, fmt.Errorf("some error occured: %w", errors)
+	}
+
+	// 1.cookieを取得
+	cookie, err := lget.doorBell(logined, "")
+	if err != nil {
 		panic(err)
 	}
-	fmt.Println(logined.StatusCode)
-	// 1.cookieを取得
+	fmt.Println(cookie)
 	// 2.ログイン n回チャレンジ
 	// 3.確認
 	return lget, nil
@@ -122,4 +126,15 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 		}
 	}
 	return nil, errors
+}
+
+func (lget *Lget) doorBell(resp *http.Response, cookieName string) (string, error) {
+	// cookie get
+	parser := &http.Request{Header: http.Header{"Cookie": resp.Header["Set-Cookie"]}}
+	cookie, err := parser.Cookie(cookieName)
+	if err != nil {
+		err = fmt.Errorf("parse cookie error: %w", err)
+		return "", err
+	}
+	return cookie.Value, nil
 }

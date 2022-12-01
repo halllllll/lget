@@ -1,26 +1,27 @@
 package lget
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
 
-type loginInfo struct {
-	host    string
-	adminId string
-	adminPw string
+type LoginInfo struct {
+	Host    string
+	AdminId string
+	AdminPw string
 }
 
 type RapeHandler interface {
-	Login() (*Lget, error)
-	SetHost(string) error
-	SetAdminId(string) error
-	SetAdminPw(string) error
+	Login(*LoginInfo) (*Lget, error)
 }
 
 func NewLget() RapeHandler {
-	return &loginInfo{}
+	return &Lget{}
 }
 
 type apis struct {
@@ -37,25 +38,10 @@ type Lget struct {
 	apis
 }
 
-func (info *loginInfo) SetHost(host string) error {
-	info.host = host
-	return nil
-}
-
-func (info *loginInfo) SetAdminId(adminId string) error {
-	info.adminId = adminId
-	return nil
-}
-func (info *loginInfo) SetAdminPw(adminPw string) error {
-	info.adminPw = adminPw
-	return nil
-}
-
-func (info *loginInfo) Login() (*Lget, error) {
+func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 	apiUrl := &url.URL{}
 	apiUrl.Scheme = "https"
-	// apiUrl.Host = fmt.Sprintf("%s.l-gate.net", info.Host)
-	apiUrl.Host = fmt.Sprintf("%s-api.l-gate.net", info.host)
+	apiUrl.Host = fmt.Sprintf("%s-api.l-gate.net", loginInfo.Host)
 	// url確認用
 	pseudoUrl := *apiUrl
 	pseudoUrl.Path = "auth/check-logged-in"
@@ -78,58 +64,62 @@ func (info *loginInfo) Login() (*Lget, error) {
 	apiUrl.Path = "control"
 	lget.EntryPoint = *apiUrl
 
+	lget.loginUrl = lget.EntryPoint
+	lget.loginUrl.Path = fmt.Sprintf("%s/auth/login", lget.EntryPoint.Path)
+
 	// ログインしてみるテスト
+	logined, errors := lget.knock(loginInfo)
+	if errors != nil {
+		panic(err)
+	}
+	fmt.Println(logined.StatusCode)
 	// 1.cookieを取得
 	// 2.ログイン n回チャレンジ
 	// 3.確認
 	return lget, nil
 }
 
-// func (lget *Lget) knock(info *LoginInfo) (cookie string, err error) {
-// 	type Payload struct {
-// 		loggin_id string
-// 		password  string
-// 	}
-// 	// ログインはID/PWをjsonで投げる形なので
-// 	paylaod := Payload{
-// 		loggin_id: info.AdminId,
-// 		password:  info.AdminPw,
-// 	}
-// 	loginInfoJson, err := json.Marshal(&paylaod)
-// 	if err != nil {
-// 		err = fmt.Errorf("json marshal error: %w", err)
-// 		return "", err
-// 	}
-// 	// 時間を置いて3回チャレンジ
-// 	interval := 5
-// 	for i := 1; i <= 3; i++ {
-// 		time.Sleep(time.Duration(interval) * time.Second)
-// 		loginResp, err := http.Post(lget.manualUrl.String(), "application/json", bytes.NewBuffer(loginInfoJson))
-// 		if err != nil || loginResp.StatusCode != 200 {
-// 			// err = fmt.Errorf("login error: %w, statuscode: %d", err, loginResp.StatusCode)
-// 			// utils.ErrLog.Println(err)
-// 			continue
-// 		}
-// 		// defer loginResp.Body.Close()
-// 		respBody, err := io.ReadAll(loginResp.Body)
-// 		if err != nil {
-// 			// err = fmt.Errorf("read response body error: %w", err)
-// 			// utils.ErrLog.Println(err)
-// 			continue
-// 		}
-// 		var loginedResp *typefile.LoginedResp
-// 		if err := json.Unmarshal(respBody, &loginedResp); err != nil {
-// 			// err = fmt.Errorf("unmarshall response error: %w", err)
-// 			// utils.ErrLog.Println(err)
-// 			continue
-// 		}
-// 		if loginedResp.Code == 200 {
-// 			// return loginResp, nil
-// 		} else {
-// 			// err = fmt.Errorf("login status code not 200")
-// 			// utils.ErrLog.Println(err)
-// 			continue
-// 		}
-// 	}
-// 	return nil, err
-// }
+func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
+	payload := &LgateLoginInfo{
+		LoginId:  info.AdminId,
+		Password: info.AdminPw,
+	}
+	// ログインはID/PWをjsonで投げる形なので
+	loginInfoJson, err := json.Marshal(&payload)
+	if err != nil {
+		err = fmt.Errorf("json marshal error: %w", err)
+		return nil, []error{err}
+	}
+	// 時間を置いて3回チャレンジ
+	interval := 5
+	for i := 1; i <= 3; i++ {
+		time.Sleep(time.Duration(interval) * time.Second)
+		loginResp, err := http.Post(lget.loginUrl.String(), "application/json", bytes.NewBuffer(loginInfoJson))
+		if err != nil || loginResp.StatusCode != 200 {
+			err = fmt.Errorf("login error: %w, statuscode: %d", err, loginResp.StatusCode)
+			errors = append(errors, err)
+			continue
+		}
+		defer loginResp.Body.Close()
+		respBody, err := io.ReadAll(loginResp.Body)
+		if err != nil {
+			err = fmt.Errorf("read response body error: %w", err)
+			errors = append(errors, err)
+			continue
+		}
+		var loginedResp LoginedResp
+		if err := json.Unmarshal(respBody, &loginedResp); err != nil {
+			err = fmt.Errorf("unmarshall response error: %w", err)
+			errors = append(errors, err)
+			continue
+		}
+		if loginedResp.Code == 200 {
+			return loginResp, nil
+		} else {
+			err = fmt.Errorf("login status code not 200")
+			errors = append(errors, err)
+			continue
+		}
+	}
+	return nil, errors
+}

@@ -27,11 +27,17 @@ type LoginInfo struct {
 	AdminPw string
 }
 
-type RapeHandler interface {
-	Login(*LoginInfo) (*Lget, error)
+// ログイン通る前
+type LgetHandler interface {
+	Login(*LoginInfo) (OpenedLgetHandler, error)
 }
 
-func NewLget() RapeHandler {
+// ログイン後
+type OpenedLgetHandler interface {
+	GetLog()
+}
+
+func NewLget() LgetHandler {
 	return &Lget{}
 }
 
@@ -62,9 +68,11 @@ func (a *apis) prepareApiUrls() {
 type Lget struct {
 	LgetResp http.Response
 	apis
+	cookie     string
+	resultUuid string
 }
 
-func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
+func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 	apiUrl := &url.URL{}
 	apiUrl.Scheme = "https"
 	apiUrl.Host = fmt.Sprintf("%s-api.l-gate.net", loginInfo.Host)
@@ -103,13 +111,14 @@ func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(cookie)
+	lget.cookie = cookie
 	// 2.cookieを使って(おそらくセッション毎の)uuidを取得
 	resultUuid, err := lget.chaim(cookie)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(resultUuid)
+	lget.resultUuid = resultUuid
+
 	// 3.確認
 	return lget, nil
 }
@@ -171,6 +180,7 @@ func (lget *Lget) doorBell(resp *http.Response, cookieName string) (string, erro
 	return cookie.Value, nil
 }
 
+// challenge getting result uuid
 func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	// なぜかこのurlで最初に飛ばないとresultを得られなかった（ブラウザでも最初にGETを飛ばしているっぽい）
 	req, err := http.NewRequest(http.MethodGet, lget.helloUrl.String(), nil)
@@ -205,4 +215,9 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	}
 	resultUuid = getDataResp.Result.UUID
 	return
+}
+
+// 以下データ取得系API
+func (lget *Lget) GetLog() {
+
 }

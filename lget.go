@@ -36,6 +36,8 @@ type LgetHandler interface {
 // ログイン後
 type OpenedLgetHandler interface {
 	GetLog(startUnixTime int, endUnixTime int) (string, error)
+
+	Download(string) (io.Reader, error)
 }
 
 func NewLget() LgetHandler {
@@ -382,4 +384,28 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 		time.Sleep(15 * time.Second) // 15 sec is official interval (at least on browser)
 	}
 	return
+}
+
+func (lget *Lget) Download(fileUrl string) (io.Reader, error) {
+	golog.InfoLog.Println("start downloading...")
+	fileReq, err := http.NewRequest(http.MethodGet, fileUrl, nil)
+	if err != nil {
+		err = fmt.Errorf("create file request error: %w", err)
+		golog.ErrLog.Println(err)
+		return nil, err
+	}
+	fileReq.Header.Set("User-Agent", uarand.GetRandom())
+	fileReq.Header.Set("Cookie", fmt.Sprintf("%s%s=%s", LGATEGACOOKIE, CONTROLSESSID, lget.cookie))
+
+	fileReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+	fileClient := &http.Client{}
+	f, err := fileClient.Do(fileReq)
+	if err != nil {
+		err = fmt.Errorf("get file error: %w", err)
+		golog.ErrLog.Println(err)
+		return nil, err
+	}
+	defer f.Body.Close()
+	golog.InfoLog.Println("downloaded!")
+	return f.Body, nil
 }

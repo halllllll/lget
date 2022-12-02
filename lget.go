@@ -36,8 +36,7 @@ type LgetHandler interface {
 // ログイン後
 type OpenedLgetHandler interface {
 	GetLog(startUnixTime int, endUnixTime int) (string, error)
-
-	Download(string) (io.Reader, error)
+	Download(string) ([]byte, error)
 }
 
 func NewLget() LgetHandler {
@@ -386,7 +385,7 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 	return
 }
 
-func (lget *Lget) Download(fileUrl string) (io.Reader, error) {
+func (lget *Lget) Download(fileUrl string) ([]byte, error) {
 	golog.InfoLog.Println("start downloading...")
 	fileReq, err := http.NewRequest(http.MethodGet, fileUrl, nil)
 	if err != nil {
@@ -407,5 +406,11 @@ func (lget *Lget) Download(fileUrl string) (io.Reader, error) {
 	}
 	defer f.Body.Close()
 	golog.InfoLog.Println("downloaded!")
-	return f.Body, nil
+	rawBytes, err := io.ReadAll(f.Body)
+	if err != nil {
+		err = fmt.Errorf("read file (response) body error: %w", err)
+		golog.ErrLog.Println(err)
+		return nil, err
+	}
+	return rawBytes, nil
 }

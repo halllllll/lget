@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/corpix/uarand"
+	"github.com/halllllll/golog"
 )
 
 const (
@@ -18,7 +19,7 @@ const (
 )
 
 func init() {
-
+	golog.LoggingSetting("lget.log")
 }
 
 type LoginInfo struct {
@@ -34,7 +35,7 @@ type LgetHandler interface {
 
 // ログイン後
 type OpenedLgetHandler interface {
-	GetLog()
+	GetLog(startUnixTime int, endUnixTime int)
 }
 
 func NewLget() LgetHandler {
@@ -84,6 +85,7 @@ func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 
 	if err != nil {
 		err = fmt.Errorf("login '%s' error: %w", pseudoUrl.String(), err)
+		golog.ErrLog.Fatalln(err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -218,6 +220,6 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 }
 
 // 以下データ取得系API
-func (lget *Lget) GetLog() {
+func (lget *Lget) GetLog(startUnixTime, endUnixTime int) {
 
 }

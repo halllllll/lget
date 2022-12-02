@@ -85,12 +85,13 @@ func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 
 	if err != nil {
 		err = fmt.Errorf("login '%s' error: %w", pseudoUrl.String(), err)
-		golog.ErrLog.Fatalln(err)
+		golog.ErrLog.Println(err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		err = fmt.Errorf("login error - GET '%s' reponse statuscode %d", pseudoUrl.String(), resp.StatusCode)
+		golog.ErrLog.Println(err)
 		return nil, err
 	}
 
@@ -111,13 +112,15 @@ func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 	// 1. ログイン後のresponseからcookieを取得するだけ keyは決め打ち
 	cookie, err := lget.doorBell(logined, CONTROLSESSID)
 	if err != nil {
-		panic(err)
+		golog.ErrLog.Println(err)
+		return nil, err
 	}
 	lget.cookie = cookie
 	// 2.cookieを使って(おそらくセッション毎の)uuidを取得
 	resultUuid, err := lget.chaim(cookie)
 	if err != nil {
-		panic(err)
+		golog.ErrLog.Println(err)
+		return nil, err
 	}
 	lget.resultUuid = resultUuid
 
@@ -135,6 +138,7 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 	loginInfoJson, err := json.Marshal(&payload)
 	if err != nil {
 		err = fmt.Errorf("json marshal error: %w", err)
+		golog.ErrLog.Println(err)
 		return nil, []error{err}
 	}
 	// 時間を置いて3回チャレンジ
@@ -144,6 +148,7 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 		loginResp, err := http.Post(lget.loginUrl.String(), "application/json", bytes.NewBuffer(loginInfoJson))
 		if err != nil || loginResp.StatusCode != 200 {
 			err = fmt.Errorf("login error: %w, statuscode: %d", err, loginResp.StatusCode)
+			golog.ErrLog.Println(err)
 			errors = append(errors, err)
 			continue
 		}
@@ -151,12 +156,14 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 		respBody, err := io.ReadAll(loginResp.Body)
 		if err != nil {
 			err = fmt.Errorf("read response body error: %w", err)
+			golog.ErrLog.Println(err)
 			errors = append(errors, err)
 			continue
 		}
 		var loginedResp LoginedResp
 		if err := json.Unmarshal(respBody, &loginedResp); err != nil {
 			err = fmt.Errorf("unmarshall response error: %w", err)
+			golog.ErrLog.Println(err)
 			errors = append(errors, err)
 			continue
 		}
@@ -164,6 +171,7 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 			return loginResp, nil
 		} else {
 			err = fmt.Errorf("login status code not 200")
+			golog.ErrLog.Println(err)
 			errors = append(errors, err)
 			continue
 		}
@@ -177,6 +185,7 @@ func (lget *Lget) doorBell(resp *http.Response, cookieName string) (string, erro
 	cookie, err := parser.Cookie(cookieName)
 	if err != nil {
 		err = fmt.Errorf("parse cookie error: %w", err)
+		golog.ErrLog.Println(err)
 		return "", err
 	}
 	return cookie.Value, nil
@@ -188,6 +197,7 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	req, err := http.NewRequest(http.MethodGet, lget.helloUrl.String(), nil)
 	if err != nil {
 		err = fmt.Errorf("create request error: %w", err)
+		golog.ErrLog.Println(err)
 		return
 	}
 	req.Header.Set("User-Agent", uarand.GetRandom())
@@ -196,6 +206,7 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	dataResp, err := client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("request error: %w", err)
+		golog.ErrLog.Println(err)
 		return
 	}
 	defer dataResp.Body.Close()
@@ -203,16 +214,19 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	data, err := io.ReadAll(dataResp.Body)
 	if err != nil {
 		err = fmt.Errorf("read response body erro: %w", err)
+		golog.ErrLog.Println(err)
 		return
 	}
 
 	var getDataResp GetDataResp
 	if err = json.Unmarshal(data, &getDataResp); err != nil {
 		err = fmt.Errorf("unmarhal response error: %w", err)
+		golog.ErrLog.Println(err)
 		return
 	}
 	if getDataResp.Code != 200 {
 		err = fmt.Errorf("statuscode: %d", getDataResp.Code)
+		golog.ErrLog.Println(err)
 		return
 	}
 	resultUuid = getDataResp.Result.UUID

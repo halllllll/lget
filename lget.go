@@ -44,7 +44,9 @@ type apis struct {
 	downloadFileUrl url.URL
 }
 
+// 各種APIのエンドポイントをドメインから作成作成
 func (a *apis) prepareApiUrls() {
+	a.EntryPoint.Path = "control"
 	a.loginUrl = a.EntryPoint
 	a.loginUrl.Path = fmt.Sprintf("%s/auth/login", a.EntryPoint.Path)
 	a.helloUrl = a.EntryPoint
@@ -84,23 +86,25 @@ func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 
 	lget := &Lget{}
 	lget.LgetResp = *resp
-	apiUrl.Path = "control"
 	lget.EntryPoint = *apiUrl
+	// assemble api urls
 	lget.apis.prepareApiUrls()
-
-	// ログインしてみるテスト
+	// ログインテスト
 	logined, errors := lget.knock(loginInfo)
 	if errors != nil {
+		fmt.Printf("errors length: %d\n", len(errors))
+		for _, err := range errors {
+			fmt.Printf("%w\n", err)
+		}
 		return nil, fmt.Errorf("some error occured: %w", errors)
 	}
-
-	// 1.cookieを取得
+	// 1. ログイン後のresponseからcookieを取得するだけ keyは決め打ち
 	cookie, err := lget.doorBell(logined, CONTROLSESSID)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(cookie)
-	// cookieを使ってresutlUuidを取得
+	// 2.cookieを使って(おそらくセッション毎の)uuidを取得
 	resultUuid, err := lget.chaim(cookie)
 	if err != nil {
 		panic(err)
@@ -110,6 +114,7 @@ func (info *Lget) Login(loginInfo *LoginInfo) (*Lget, error) {
 	return lget, nil
 }
 
+// 所与のデータでログインできるか確認（数回チャレンジ）
 func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 	payload := &LgateLoginInfo{
 		LoginId:  info.AdminId,
@@ -155,8 +160,8 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 	return nil, errors
 }
 
+// extract cookie by certainly cookie name
 func (lget *Lget) doorBell(resp *http.Response, cookieName string) (string, error) {
-	// cookie get
 	parser := &http.Request{Header: http.Header{"Cookie": resp.Header["Set-Cookie"]}}
 	cookie, err := parser.Cookie(cookieName)
 	if err != nil {
@@ -168,7 +173,6 @@ func (lget *Lget) doorBell(resp *http.Response, cookieName string) (string, erro
 
 func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	// なぜかこのurlで最初に飛ばないとresultを得られなかった（ブラウザでも最初にGETを飛ばしているっぽい）
-	fmt.Printf("hello(manual)url??? %s\n", lget.helloUrl.String())
 	req, err := http.NewRequest(http.MethodGet, lget.helloUrl.String(), nil)
 	if err != nil {
 		err = fmt.Errorf("create request error: %w", err)
@@ -176,7 +180,6 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 	}
 	req.Header.Set("User-Agent", uarand.GetRandom())
 	req.Header.Set("Cookie", fmt.Sprintf("%s=%s", CONTROLSESSID, cookie))
-	fmt.Println(req.Header)
 	client := &http.Client{}
 	dataResp, err := client.Do(req)
 	if err != nil {
@@ -200,8 +203,6 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 		err = fmt.Errorf("statuscode: %d", getDataResp.Code)
 		return
 	}
-	fmt.Println("empy???")
-	fmt.Printf("%v\n", getDataResp)
 	resultUuid = getDataResp.Result.UUID
 	return
 }

@@ -15,7 +15,8 @@ import (
 
 const (
 	CONTROLSESSID = "CONTROLSESSID"
-	LGATEGACOOKIE = "_ga_EP4PNHSVYP=TISATONISHIKIGI; _ga=TAKINAINOUE; "
+	//LGATEGACOOKIE = "_ga_EP4PNHSVYP=TISATONISHIKIGI; _ga=TAKINAINOUE; "
+	LGATEGACOOKIE = "_ga_EP4PNHSVYP=HAHAHA; _ga=NOTHING; "
 )
 
 func init() {
@@ -35,7 +36,7 @@ type LgetHandler interface {
 
 // ログイン後
 type OpenedLgetHandler interface {
-	GetLog(startUnixTime int, endUnixTime int) error
+	GetLog(startUnixTime int, endUnixTime int) (string, error)
 }
 
 func NewLget() LgetHandler {
@@ -46,8 +47,8 @@ type apis struct {
 	EntryPoint      url.URL
 	loginUrl        url.URL
 	helloUrl        url.URL
-	dataUrl         url.URL
-	jobStateUrl     url.URL
+	dataUrl         url.URL // first contact
+	jobStateUrl     url.URL // toritate style
 	downloadFileUrl url.URL
 }
 
@@ -74,6 +75,7 @@ type Lget struct {
 }
 
 func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
+	golog.InfoLog.Println("login challenge...")
 	apiUrl := &url.URL{}
 	apiUrl.Scheme = "https"
 	apiUrl.Host = fmt.Sprintf("%s-api.l-gate.net", loginInfo.Host)
@@ -120,7 +122,7 @@ func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 	}
 	lget.resultUuid = resultUuid
 
-	// 3.確認
+	golog.InfoLog.Println("login successed!")
 	return lget, nil
 }
 
@@ -230,19 +232,50 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 }
 
 // 以下データ取得系API
-func (lget *Lget) GetLog(startUnixTime, endUnixTime int) error {
+func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
 	if startUnixTime >= endUnixTime {
-		return fmt.Errorf("end unixtime should be later than start unixtime")
+		err := fmt.Errorf("end unixtime should be later than start unixtime")
+		golog.ErrLog.Println(err)
+		return "", err
 	}
+	golog.InfoLog.Println("start: GET LOGS FOR ALL KINDS.")
 	//　全種類の履歴取得用URL構築
-	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.jobStateUrl.String(), startUnixTime, endUnixTime)
-	fmt.Println(startUrl)
-	return nil
+	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
+	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.dataUrl.String(), startUnixTime, endUnixTime)
+
+	golog.ErrLog.Printf("start url: %s\n", startUrl)
+	jobUuid, err := rattlingKnob(startUrl, lget.cookie)
+	if err != nil {
+		err = fmt.Errorf("get data (firstcontact) error: %w", err)
+		golog.ErrLog.Println(err)
+		return "", err
+	}
+	jobUrl, err := url.JoinPath(lget.jobStateUrl.String(), jobUuid)
+	if err != nil {
+		err = fmt.Errorf("compose url path error: %w", err)
+		return "", err
+	}
+	golog.InfoLog.Printf("job url: %s\n", jobUrl)
+
+	downloadFileUuid, err := brokenBuzzer(jobUrl, lget.cookie)
+	if err != nil {
+		return "", err
+	}
+	golog.InfoLog.Printf("file download uuid: %s\n", downloadFileUuid)
+
+	// ダウンロードリンクを構築
+	downloadFileUrl, err := url.JoinPath(lget.downloadFileUrl.String(), downloadFileUuid)
+	if err != nil {
+		err = fmt.Errorf("compose download url link error: %w", err)
+		return "", err
+	}
+
+	return downloadFileUrl, err
 }
 
-func rattlingKnob(url, cookie string) (jobUuid string, err error) {
-	// first contact
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+// first contact for get data (from url)
+func rattlingKnob(targetUrl, cookie string) (jobUuid string, err error) {
+	req, err := http.NewRequest(http.MethodGet, targetUrl, nil)
 	if err != nil {
 		err = fmt.Errorf("create new request error: %w", err)
 		golog.ErrLog.Println(err)
@@ -270,5 +303,84 @@ func rattlingKnob(url, cookie string) (jobUuid string, err error) {
 		golog.ErrLog.Println(err)
 		return
 	}
+
+	if !firstContact.IsSuccessful {
+		err = fmt.Errorf("first contact error: statuscode %d\nresult: %#v", firstContact.Code, firstContact)
+		golog.ErrLog.Println(err)
+		return
+	}
+
 	return firstContact.Result.UUID, nil
+}
+
+func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error) {
+	if targetUrl == "" || cookie == "" {
+		err = fmt.Errorf("both url and cookie DONT shoud be empty")
+		golog.ErrLog.Println(err)
+		return "", err
+	}
+	count := 0
+	startTime := time.Now().Format("2006-01-02 15:04:05")
+
+	golog.InfoLog.Printf("GO! start at %s\n", startTime)
+	for {
+		count += 1
+		req, err := http.NewRequest(http.MethodGet, targetUrl, nil)
+		if err != nil {
+			err = fmt.Errorf("create request error: %w ", err)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		req.Header.Set("Cookie", fmt.Sprintf("%s%s=%s", LGATEGACOOKIE, CONTROLSESSID, cookie))
+
+		client := &http.Client{}
+		respRow, err := client.Do(req)
+		if err != nil {
+			err = fmt.Errorf("request error: %w", err)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		if respRow.StatusCode != 200 {
+			err = fmt.Errorf("status code: %d", respRow.StatusCode)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		defer respRow.Body.Close()
+
+		// レスポンスを読める形(バイトデータ)にする
+		data, err := io.ReadAll(respRow.Body)
+		if err != nil {
+			err = fmt.Errorf("read response error: %w", err)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		// バイトデータはjsonなので
+		var curData GetDataResp
+		if err := json.Unmarshal(data, &curData); err != nil {
+			err = fmt.Errorf("unmarshall error: %w", err)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		result := curData.Result
+		msg := result.Message
+		downloadFileUuid = result.Result.FileUUID
+		if result.IsSuccess {
+			golog.InfoLog.Printf("Done! %s\n", msg)
+			break
+		} else if msg == "CSVエクスポートに失敗しました。" {
+			err = fmt.Errorf("csv export error: %s", msg)
+			golog.ErrLog.Println(err)
+			golog.ErrLog.Printf("result: %#v\n", result)
+			return "", err
+		} else if msg != "学習ログCSVエクスポートキューが実行待ちです。" {
+			// unknown error message(even 2022/12/02)
+			err = fmt.Errorf("unkown error : %s", msg)
+			golog.ErrLog.Println(err)
+			return "", err
+		}
+		golog.InfoLog.Printf("%d - time: %s - %s\n", count, time.Now().Format("2006-01-02 15:04:05"), msg)
+
+		time.Sleep(15 * time.Second) // 15 sec is official interval (at least on browser)
+	}
+	return
 }

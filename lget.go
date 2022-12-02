@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	CONTROLSESSID       = "CONTROLSESSID"
-	LGATEORIGINALCOOKIE = "_ga_EP4PNHSVYP=TISATONISHIKIGI; _ga=TAKINAINOUE; "
+	CONTROLSESSID = "CONTROLSESSID"
+	LGATEGACOOKIE = "_ga_EP4PNHSVYP=TISATONISHIKIGI; _ga=TAKINAINOUE; "
 )
 
 func init() {
@@ -35,7 +35,7 @@ type LgetHandler interface {
 
 // ログイン後
 type OpenedLgetHandler interface {
-	GetLog(startUnixTime int, endUnixTime int)
+	GetLog(startUnixTime int, endUnixTime int) error
 }
 
 func NewLget() LgetHandler {
@@ -103,11 +103,7 @@ func (info *Lget) Login(loginInfo *LoginInfo) (OpenedLgetHandler, error) {
 	// ログインテスト
 	logined, errors := lget.knock(loginInfo)
 	if errors != nil {
-		fmt.Printf("errors length: %d\n", len(errors))
-		for _, err := range errors {
-			fmt.Printf("%w\n", err)
-		}
-		return nil, fmt.Errorf("some error occured: %w", errors)
+		return nil, fmt.Errorf("some error occured: please refer to logfile")
 	}
 	// 1. ログイン後のresponseからcookieを取得するだけ keyは決め打ち
 	cookie, err := lget.doorBell(logined, CONTROLSESSID)
@@ -234,6 +230,45 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 }
 
 // 以下データ取得系API
-func (lget *Lget) GetLog(startUnixTime, endUnixTime int) {
+func (lget *Lget) GetLog(startUnixTime, endUnixTime int) error {
+	if startUnixTime >= endUnixTime {
+		return fmt.Errorf("end unixtime should be later than start unixtime")
+	}
+	//　全種類の履歴取得用URL構築
+	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.jobStateUrl.String(), startUnixTime, endUnixTime)
+	fmt.Println(startUrl)
+	return nil
+}
 
+func rattlingKnob(url, cookie string) (jobUuid string, err error) {
+	// first contact
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		err = fmt.Errorf("create new request error: %w", err)
+		golog.ErrLog.Println(err)
+		return
+	}
+	req.Header.Set("User-Agent", uarand.GetRandom())
+	req.Header.Set("Cookie", fmt.Sprintf("%s%s=%s", LGATEGACOOKIE, CONTROLSESSID, cookie))
+	client := &http.Client{}
+	firstContactResp, err := client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("request error: %w", err)
+		golog.ErrLog.Println(err)
+		return
+	}
+	defer firstContactResp.Body.Close()
+	firstContactData, err := io.ReadAll(firstContactResp.Body)
+	if err != nil {
+		err = fmt.Errorf("response read error: %w", err)
+		golog.ErrLog.Println(err)
+		return
+	}
+	var firstContact GetDataResp
+	if err = json.Unmarshal(firstContactData, &firstContact); err != nil {
+		err = fmt.Errorf("unmasharl error: %w", err)
+		golog.ErrLog.Println(err)
+		return
+	}
+	return firstContact.Result.UUID, nil
 }

@@ -47,7 +47,8 @@ type apis struct {
 	EntryPoint      url.URL
 	loginUrl        url.URL
 	helloUrl        url.URL
-	dataUrl         url.URL // first contact
+	getLogDataUrl   url.URL // first contact for get all log data
+	getUserDataUrl  url.URL // first contact for get all user data
 	jobStateUrl     url.URL // toritate style
 	downloadFileUrl url.URL
 }
@@ -59,8 +60,10 @@ func (a *apis) prepareApiUrls() {
 	a.loginUrl.Path = fmt.Sprintf("%s/auth/login", a.EntryPoint.Path)
 	a.helloUrl = a.EntryPoint
 	a.helloUrl.Path = fmt.Sprintf("%s/manual/get", a.EntryPoint.Path)
-	a.dataUrl = a.EntryPoint
-	a.dataUrl.Path = fmt.Sprintf("%s/action-log/download-csv-total", a.EntryPoint.Path)
+	a.getLogDataUrl = a.EntryPoint
+	a.getLogDataUrl.Path = fmt.Sprintf("%s/action-log/download-csv-total", a.EntryPoint.Path)
+	a.getUserDataUrl = a.EntryPoint
+	a.getUserDataUrl.Path = fmt.Sprintf("%s/user/download-csv-total", a.EntryPoint.Path)
 	a.jobStateUrl = a.EntryPoint
 	a.jobStateUrl.Path = fmt.Sprintf("%s/job-state/view", a.EntryPoint.Path)
 	a.downloadFileUrl = a.EntryPoint
@@ -241,7 +244,7 @@ func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
 	golog.InfoLog.Println("start: GET LOGS FOR ALL KINDS.")
 	//　全種類の履歴取得用URL構築
 	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
-	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.dataUrl.String(), startUnixTime, endUnixTime)
+	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.getLogDataUrl.String(), startUnixTime, endUnixTime)
 
 	golog.ErrLog.Printf("start url: %s\n", startUrl)
 	jobUuid, err := rattlingKnob(startUrl, lget.cookie)

@@ -18,7 +18,7 @@ The following endpoints are confirmed to exist.
 - `/control/action-log/download-csv-total`
     - All user action log data api endpoint
     - Some parameters required, for example, `?start_at=00000&end_at=999999&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8"`
-- `/control/user/download-csv-total`
+- `/control/user/download-csv`
     - All registed user data api endpoint
     - Some parameters required, almost same above example, like `?encoding=utf8&term_uuid=xxxxxx-xxxx-xxxx-xxxx-xxxxx&page_size=50`
 - `/control/job-state/view/{uuid}`

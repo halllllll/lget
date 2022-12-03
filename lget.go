@@ -36,6 +36,8 @@ type LgetHandler interface {
 // ログイン後
 type OpenedLgetHandler interface {
 	GetLog(startUnixTime int, endUnixTime int) (string, error)
+	GetAllUser() (string, error)
+	hereIsJohnney(string) (string, error)
 	Download(string) ([]byte, error)
 }
 
@@ -63,7 +65,7 @@ func (a *apis) prepareApiUrls() {
 	a.getLogDataUrl = a.EntryPoint
 	a.getLogDataUrl.Path = fmt.Sprintf("%s/action-log/download-csv-total", a.EntryPoint.Path)
 	a.getUserDataUrl = a.EntryPoint
-	a.getUserDataUrl.Path = fmt.Sprintf("%s/user/download-csv-total", a.EntryPoint.Path)
+	a.getUserDataUrl.Path = fmt.Sprintf("%s/user/download-csv", a.EntryPoint.Path)
 	a.jobStateUrl = a.EntryPoint
 	a.jobStateUrl.Path = fmt.Sprintf("%s/job-state/view", a.EntryPoint.Path)
 	a.downloadFileUrl = a.EntryPoint
@@ -235,18 +237,8 @@ func (lget *Lget) chaim(cookie string) (resultUuid string, err error) {
 }
 
 // 以下データ取得系API
-func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
-	if startUnixTime >= endUnixTime {
-		err := fmt.Errorf("end unixtime should be later than start unixtime")
-		golog.ErrLog.Println(err)
-		return "", err
-	}
-	golog.InfoLog.Println("start: GET LOGS FOR ALL KINDS.")
-	//　全種類の履歴取得用URL構築
-	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
-	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.getLogDataUrl.String(), startUnixTime, endUnixTime)
-
-	golog.ErrLog.Printf("start url: %s\n", startUrl)
+// 管理するやつ
+func (lget *Lget) hereIsJohnney(startUrl string) (string, error) {
 	jobUuid, err := rattlingKnob(startUrl, lget.cookie)
 	if err != nil {
 		err = fmt.Errorf("get data (firstcontact) error: %w", err)
@@ -274,6 +266,33 @@ func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
 	}
 
 	return downloadFileUrl, err
+}
+
+// ログデータ
+func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
+	if startUnixTime >= endUnixTime {
+		err := fmt.Errorf("end unixtime should be later than start unixtime")
+		golog.ErrLog.Println(err)
+		return "", err
+	}
+	golog.InfoLog.Println("start: GET ACTION LOGS FOR ALL KINDS.")
+	//　全種類の履歴取得用URL構築
+	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
+	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.getLogDataUrl.String(), startUnixTime, endUnixTime)
+	golog.InfoLog.Printf("start url: %s\n", startUrl)
+
+	return lget.hereIsJohnney(startUrl)
+}
+
+// ユーザーデータ
+func (lget *Lget) GetAllUser() (string, error) {
+	golog.InfoLog.Println("start: GET ALL USERS.")
+	//　全種類の履歴取得用URL構築
+	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
+	startUrl := fmt.Sprintf("%s?encoding=utf8&term_uuid=&page_size=1000", lget.getUserDataUrl.String())
+
+	golog.InfoLog.Printf("start url: %s\n", startUrl)
+	return lget.hereIsJohnney(startUrl)
 }
 
 // first contact for get data (from url)
@@ -367,6 +386,19 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 		result := curData.Result
 		msg := result.Message
 		downloadFileUuid = result.Result.FileUUID
+
+		// みたことないメッセージだと失敗と判断する
+		known_msgs := []string{
+			"学習ログCSVエクスポートキューが実行待ちです。",
+			"ユーザーCSVエクスポートキューが実行待ちです。",
+		}
+		strange_msg := true
+		for _, m := range known_msgs {
+			if msg == m {
+				strange_msg = false
+			}
+		}
+
 		if result.IsSuccess {
 			golog.InfoLog.Printf("Done! %s\n", msg)
 			break
@@ -375,7 +407,7 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 			golog.ErrLog.Println(err)
 			golog.ErrLog.Printf("result: %#v\n", result)
 			return "", err
-		} else if msg != "学習ログCSVエクスポートキューが実行待ちです。" {
+		} else if strange_msg {
 			// unknown error message(even 2022/12/02)
 			err = fmt.Errorf("unkown error : %s", msg)
 			golog.ErrLog.Println(err)

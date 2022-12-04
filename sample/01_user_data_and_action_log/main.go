@@ -15,8 +15,10 @@ import (
 
 var cd string
 
-var userDataFolderName string = "user_csvs"
-var userLogFolderName string = "user_action_csvs"
+const (
+	userDataFolderName string = "user_csvs"
+	userLogFolderName  string = "user_action_csvs"
+)
 
 func init() {
 	loc, err := time.LoadLocation("Asia/Tokyo")

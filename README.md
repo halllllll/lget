@@ -2,6 +2,8 @@
 
 scraping [L-Gate](https://www.info.l-gate.net/), dumps and save csv file.
 
+**ALL FOR GIGASCHOOL, LET'S SHARING PHILOSOPHY.**
+
 # API（WIP)
 
 The following endpoints are confirmed to exist.

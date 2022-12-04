@@ -275,7 +275,7 @@ func (lget *Lget) GetLog(startUnixTime, endUnixTime int) (string, error) {
 		golog.ErrLog.Println(err)
 		return "", err
 	}
-	golog.InfoLog.Println("start: GET ACTION LOGS FOR ALL KINDS.")
+	golog.InfoLog.Printf("start: GET ACTION LOGS FOR ALL KINDS. \nFROM %s TO %s\n", time.Unix(int64(startUnixTime), 0).Format("2006/01/02 15:04:05"), time.Unix(int64(endUnixTime), 0).Format("2006/01/02 15:04:05"))
 	//　全種類の履歴取得用URL構築
 	// url.URLでちゃんと構築したほうが行儀がいいかもしれない
 	startUrl := fmt.Sprintf("%s?start_at=%d&end_at=%d&time_unit=hour&scope=tenant&action=&response_all=1&encoding=utf8", lget.getLogDataUrl.String(), startUnixTime, endUnixTime)
@@ -342,16 +342,24 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 		return "", err
 	}
 	count := 0
+	errCount := 0
 	startTime := time.Now().Format("2006-01-02 15:04:05")
 
 	golog.InfoLog.Printf("GO! start at %s\n", startTime)
 	for {
+		if errCount > 5 {
+			err := fmt.Errorf("err counts over limited. check the log file these days")
+			return "", err
+		}
 		count += 1
 		req, err := http.NewRequest(http.MethodGet, targetUrl, nil)
 		if err != nil {
 			err = fmt.Errorf("create request error: %w ", err)
 			golog.ErrLog.Println(err)
-			return "", err
+			// return "", err
+			errCount++
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		req.Header.Set("Cookie", fmt.Sprintf("%s%s=%s", LGATEGACOOKIE, CONTROLSESSID, cookie))
 
@@ -360,12 +368,18 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 		if err != nil {
 			err = fmt.Errorf("request error: %w", err)
 			golog.ErrLog.Println(err)
-			return "", err
+			// return "", err
+			errCount++
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		if respRow.StatusCode != 200 {
 			err = fmt.Errorf("status code: %d", respRow.StatusCode)
 			golog.ErrLog.Println(err)
-			return "", err
+			// return "", err
+			errCount++
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		defer respRow.Body.Close()
 
@@ -374,14 +388,20 @@ func brokenBuzzer(targetUrl, cookie string) (downloadFileUuid string, err error)
 		if err != nil {
 			err = fmt.Errorf("read response error: %w", err)
 			golog.ErrLog.Println(err)
-			return "", err
+			// return "", err
+			errCount++
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		// バイトデータはjsonなので
 		var curData GetDataResp
 		if err := json.Unmarshal(data, &curData); err != nil {
 			err = fmt.Errorf("unmarshall error: %w", err)
 			golog.ErrLog.Println(err)
-			return "", err
+			// return "", err
+			errCount++
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		result := curData.Result
 		msg := result.Message

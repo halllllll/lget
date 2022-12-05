@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/halllllll/lget"
-	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
 )
 
 var cd string
@@ -20,12 +19,46 @@ const (
 	userLogFolderName  string = "user_action_csvs"
 )
 
+type Conf struct {
+	UserLogStartAtUnixTime int `mapstructure:"LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME"`
+	UserLogEndAtUnixTime   int `mapstructure:"LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME"`
+	UserLogBetweenMinutes  int `mapstructure:"LGET_ALLUSER_ACTIONLOG_BETWEEN_MINUTES"`
+}
+
+var cnf *Conf
+
+func loadConf(c *Conf) (err error) {
+	viper.AutomaticEnv()
+	err = viper.ReadInConfig()
+	if err != nil {
+		return
+	}
+	err = viper.Unmarshal(&c)
+	return
+}
+
 func init() {
 	loc, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		panic(err)
 	}
 	time.Local = loc
+	// load env file
+	viper.AddConfigPath(".")
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	viper.SetConfigFile(filepath.Join(cwd, ".env"))
+	if err := loadConf(cnf); err != nil {
+		panic(err)
+	}
+	viper.SetConfigType("env")
+
+	err = viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	// load credential file
 	loginInfoJson, err := Env.ReadFile("secret.json")
@@ -41,10 +74,6 @@ func init() {
 		Host:    lijs.Host,
 		AdminId: lijs.AdminId,
 		AdminPw: lijs.AdminPw,
-	}
-	err = godotenv.Load()
-	if err != nil {
-		panic(err)
 	}
 
 	curDir, err := os.Getwd()
@@ -118,38 +147,15 @@ func runGetUser(loginInfo *lget.LoginInfo, interval time.Duration, result chan [
 
 func runGetAllLog(loginInfo *lget.LoginInfo, result chan []byte) {
 	for {
-		// .envからstartAtUnixTimeとendAtUnixTimeとbetweenminutesを読み込む
-		envVal, ok := os.LookupEnv("LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME")
-		if !ok {
-			err := fmt.Errorf("can't find 'LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME' in .env")
-			panic(err)
-		}
-		startAtUnixTime, err := strconv.ParseInt(envVal, 10, 64)
-		if err != nil {
-			panic(err)
-		}
+		// .envからstartAtUnixTimeとendAtUnixTimeとbetweenminutesを読み込むのにviperを使う
+		envRawVal := viper.GetInt64("LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME")
+		startAtUnixTime := envRawVal
 
-		envVal, ok = os.LookupEnv("LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME")
-		if !ok {
-			err := fmt.Errorf("can't find 'LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME' in .env")
-			panic(err)
-		}
-		endAtUnixTime, err := strconv.ParseInt(envVal, 10, 64)
-		if err != nil {
-			panic(err)
-		}
+		envRawVal = viper.GetInt64("LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME")
+		endAtUnixTime := envRawVal
 
-		envVal, ok = os.LookupEnv("LGET_ALLUSER_ACTIONLOG_BETWEEN_MINUTES")
-		if !ok {
-			err := fmt.Errorf("can't find 'LGET_ALLUSER_ACTIONLOG_BETWEEN_MINUTES' in .env")
-			panic(err)
-		}
-		betweenInterval, err := strconv.ParseInt(envVal, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(betweenInterval)
-
+		envRawVal = viper.GetInt64("LGET_ALLUSER_ACTIONLOG_BETWEEN_MINUTES")
+		betweenInterval := envRawVal
 		// endAtUnixTimeが今よりも先だった場合は待つ
 		if time.Now().Before(time.Unix(endAtUnixTime, 0)) {
 			fmt.Printf("suspend until %s\n", time.Unix(endAtUnixTime, 0))
@@ -187,8 +193,13 @@ func runGetAllLog(loginInfo *lget.LoginInfo, result chan []byte) {
 		// envを上書きする
 		startAtUnixTime = endAtUnixTime + 1
 		endAtUnixTime = time.Unix(endAtUnixTime, 0).Add(time.Duration(betweenInterval) * time.Minute).Unix()
-		os.Setenv("LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME", strconv.Itoa(int(startAtUnixTime)))
-		os.Setenv("LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME", strconv.Itoa(int(endAtUnixTime)))
+
+		viper.Set("LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME", startAtUnixTime)
+		viper.Set("LGET_ALLUSER_ACTIONLOG_ENDATUNIXTIME", endAtUnixTime)
+		if err := viper.WriteConfig(); err != nil {
+			panic(err)
+		}
+
 	}
 }
 

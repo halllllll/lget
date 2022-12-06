@@ -1,4 +1,4 @@
-module github/halllllll/lget
+module github.com/halllllll/lget
 
 go 1.19
 

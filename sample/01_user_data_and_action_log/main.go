@@ -145,7 +145,7 @@ func runGetUser(loginInfo *lget.LoginInfo, interval time.Duration, result chan [
 	}
 }
 
-func runGetAllLog(loginInfo *lget.LoginInfo, result chan []byte) {
+func runGetAllLog(loginInfo *lget.LoginInfo, result chan actionLogData) {
 	for {
 		// .envからstartAtUnixTimeとendAtUnixTimeとbetweenminutesを読み込むのにviperを使う
 		envRawVal := viper.GetInt64("LGET_ALLUSER_ACTIONLOG_STARTATUNIXTIME")
@@ -185,7 +185,12 @@ func runGetAllLog(loginInfo *lget.LoginInfo, result chan []byte) {
 		if err != nil {
 			panic(err)
 		}
-		result <- rawData
+		ret := actionLogData{
+			fileRawData: rawData,
+			from:        int(startAtUnixTime),
+			to:          int(endAtUnixTime),
+		}
+		result <- ret
 
 		end := time.Now()
 		fmt.Printf("execution time: %s\n", end.Sub(start))
@@ -228,6 +233,12 @@ type loginInfoJsonStruct struct {
 	AdminPw string `json:"password"`
 }
 
+type actionLogData struct {
+	fileRawData []byte
+	from        int
+	to          int
+}
+
 func main() {
 	// 開始時間設定
 
@@ -242,7 +253,7 @@ func main() {
 	go runGetUser(loginInfo, time.Minute*30, userResult)
 
 	// ユーザー履歴取得用ゴルーチン
-	userLogResult := make(chan []byte)
+	userLogResult := make(chan actionLogData)
 	userLogCsvPath := filepath.Join(cd, userLogFolderName)
 	// startatunixtime, endatunixtimeは.envファイルから読み出すことにする
 	go runGetAllLog(loginInfo, userLogResult)
@@ -254,14 +265,14 @@ func main() {
 	for {
 		select {
 		case userData := <-userResult:
-			saveFileName := time.Now().Format("lget_userdata_2006_01_02_150405.csv")
+			saveFileName := time.Now().Format("user_2006_01_02_150405.csv")
 			err := saveFile(userData, filepath.Join(usersDataCsvPath, saveFileName))
 			if err != nil {
 				panic(err)
 			}
 		case userLogData := <-userLogResult:
-			saveFileName := time.Now().Format("lget_useractionlog_2006_01_02_150405.csv")
-			err := saveFile(userLogData, filepath.Join(userLogCsvPath, saveFileName))
+			saveFileName := fmt.Sprintf("useractionlog_%s__%s.csv", time.Unix(int64(userLogData.from), 0).Format("2006_01_02_150405"), time.Unix(int64(userLogData.to), 0).Format("2006_01_02_150405"))
+			err := saveFile(userLogData.fileRawData, filepath.Join(userLogCsvPath, saveFileName))
 			if err != nil {
 				panic(err)
 			}

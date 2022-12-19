@@ -149,6 +149,7 @@ func (lget *Lget) knock(info *LoginInfo) (resp *http.Response, errors []error) {
 	for i := 1; i <= 3; i++ {
 		time.Sleep(time.Duration(interval) * time.Second)
 		loginResp, err := http.Post(lget.loginUrl.String(), "application/json", bytes.NewBuffer(loginInfoJson))
+		golog.InfoLog.Printf("login challenge - %d time\n", i)
 		if err != nil || loginResp.StatusCode != 200 {
 			err = fmt.Errorf("login error: %w, statuscode: %d", err, loginResp.StatusCode)
 			golog.ErrLog.Println(err)
